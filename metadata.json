@@ -1,0 +1,6 @@
+{
+  "name": "Portal Wisma Bidara & Admin",
+  "description": "Sistem profil usaha asri Wisma Bidara dengan portal pratinjau publik kelas satu dan Halaman Admin CRUD terintegrasi database Firebase cloud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

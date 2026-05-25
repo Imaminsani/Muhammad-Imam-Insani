@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "BusinessProfile": {
+      "title": "BusinessProfile",
+      "description": "Profil usaha mikro lengkap dengan slogan, sejarah, kontak, layanan, ulasan, FAQ, dan laporan berkala pengelola.",
+      "type": "object",
+      "properties": {
+        "businessName": {
+          "type": "string",
+          "description": "Nama resmi wisma atau badan usaha"
+        },
+        "category": {
+          "type": "string",
+          "description": "Kategori jenis akomodasi"
+        },
+        "slogan": {
+          "type": "string",
+          "description": "Slogan persuasif penuh ketulusan"
+        },
+        "aboutUs": {
+          "type": "string",
+          "description": "Visi misi singkat pengelola"
+        },
+        "story": {
+          "type": "string",
+          "description": "Sejarah berdirinya wisma yang menginspirasi"
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["minimalist", "nature", "luxury", "vibrant", "corporate"],
+          "description": "Gaya panel warna dan estetika tampilan"
+        },
+        "services": {
+          "type": "array",
+          "description": "Daftar unit atau sewa kamar utama"
+        },
+        "products": {
+          "type": "array",
+          "description": "Produk tambahan"
+        },
+        "testimonials": {
+          "type": "array",
+          "description": "Ulasan pelanggan"
+        },
+        "faq": {
+          "type": "array",
+          "description": "Pertanyaan umum dan kunci"
+        },
+        "team": {
+          "type": "array",
+          "description": "Staf dan pengurus"
+        },
+        "contactInfo": {
+          "type": "object",
+          "description": "Kontak detail"
+        },
+        "operatingHours": {
+          "type": "array",
+          "description": "Jam pelayanan operasional"
+        },
+        "reports": {
+          "type": "array",
+          "description": "Laporan situasi & kondisi real-time dari pemilik / pengelola"
+        }
+      },
+      "required": [
+        "businessName",
+        "category",
+        "slogan",
+        "aboutUs",
+        "story",
+        "theme",
+        "services",
+        "products",
+        "contactInfo",
+        "operatingHours"
+      ]
+    }
+  },
+  "firestore": {
+    "/business_profiles/{profileName}": {
+      "schema": "BusinessProfile",
+      "description": "Koleksi utama berisi seluruh data profil usaha dan wisma, diindeks berdasarkan nama usaha sandi ID."
+    }
+  }
+}
