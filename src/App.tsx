@@ -4,7 +4,7 @@ import {
   Smartphone, Tablet, Laptop, RefreshCw, Eye, 
   EyeOff, Check, AlertCircle, HelpCircle, FileJson, 
   Briefcase, Coffee, ChevronRight, Compass, ArrowRight, Info,
-  Database, Server, Wifi, WifiOff, Search, Users, Layers, Plus, Trash2, Edit, Activity, Shield
+  Database, Server, Wifi, WifiOff, Search, Users, Layers, Plus, Trash2, Edit, Activity, Shield, X
 } from "lucide-react";
 import { BusinessProfile } from "./types";
 import { PRESET_BUSINESSES } from "./data";
@@ -16,6 +16,43 @@ export default function App() {
   const [profile, setProfile] = useState<BusinessProfile>(PRESET_BUSINESSES[0]);
   const [viewport, setViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   
+  // Custom states
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [toasts, setToasts] = useState<Array<{ id: string; title: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
+
+  const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      removeToast(id);
+    }, 4000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleProfileChange = (updated: BusinessProfile) => {
+    setProfile(updated);
+    setHasUnsavedChanges(true);
+    
+    // Sync to allProfiles in-memory so tabular data under other tabs update instantly
+    setAllProfiles((prev) => {
+      const exists = prev.some((p) => p.businessName === updated.businessName);
+      if (exists) {
+        return prev.map((p) => (p.businessName === updated.businessName ? updated : p));
+      } else {
+        const indexOfCurrent = prev.findIndex((p) => p.businessName === profile.businessName);
+        if (indexOfCurrent !== -1) {
+          const nextList = [...prev];
+          nextList[indexOfCurrent] = updated;
+          return nextList;
+        }
+        return [...prev, updated];
+      }
+    });
+  };
+
   // State for AI drafting status
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
@@ -43,6 +80,8 @@ export default function App() {
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [adminMessage, setAdminMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [adminSearch, setAdminSearch] = useState("");
+  const [editingProfile, setEditingProfile] = useState<BusinessProfile | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const fetchAllProfiles = async () => {
     setIsLoadingProfiles(true);
@@ -62,11 +101,38 @@ export default function App() {
     }
   };
 
+  // Fetch profiles on initial mount to display real saved data on the public page
+  useEffect(() => {
+    const loadInitialProfile = async () => {
+      try {
+        const res = await fetch("/api/firebase/list");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.profiles && data.profiles.length > 0) {
+            setAllProfiles(data.profiles);
+            
+            // Try to find the published profile, or Wisma Bidara, or use the first available profile in database
+            const publishedProfile = data.profiles.find((p: BusinessProfile) => p.isPublished === true);
+            const savedWisma = publishedProfile || data.profiles.find((p: BusinessProfile) => p.businessName === "Wisma Bidara") || data.profiles[0];
+            if (savedWisma) {
+              setProfile(savedWisma);
+              setHasUnsavedChanges(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat data awal dari Firebase:", err);
+      }
+    };
+    loadInitialProfile();
+  }, []);
+
+  // Sync / load profile whenever user switches from visitor to admin or logs in
   useEffect(() => {
     if (roleMode === 'admin') {
       fetchAllProfiles();
     }
-  }, [roleMode, activeView]);
+  }, [roleMode]);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,8 +148,10 @@ export default function App() {
       setActiveView('admin');
       setLoginUsername("");
       setLoginPassword("");
+      addToast("Akses Diterima 🔑", "Selamat datang kembali di Portal Admin Wisma Bidara!", "success");
     } else {
       setLoginError("ID atau Password salah! Silakan coba lagi dengan ID 'wismabidara' & Password 'Hasdudi19'.");
+      addToast("Login Gagal ❌", "ID Pengguna atau Kata Sandi salah.", "error");
     }
   };
 
@@ -98,12 +166,95 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         setAdminMessage({ type: 'success', text: `Sukses menghapus profil "${name}"!` });
+        addToast("Profil Dihapus 🗑️", `Profil "${name}" telah berhasil dihapus secara permanen.`, "info");
         await fetchAllProfiles();
       } else {
         throw new Error(data.message || "Gagal menghapus.");
       }
     } catch (err: any) {
       setAdminMessage({ type: 'error', text: `Gagal menghapus: ${err.message}` });
+      addToast("Gagal Menghapus ⚠️", err.message || "Terdapat kendala sewaktu menghapus data.", "error");
+    }
+  };
+
+  const handleTogglePublish = async (profileName: string) => {
+    setIsLoadingProfiles(true);
+    try {
+      // Find and update publish status in allProfiles state
+      const targetProfileAndUpdated = allProfiles.map((p) => {
+        if (p.businessName === profileName) {
+          return { ...p, isPublished: true };
+        } else {
+          return { ...p, isPublished: false };
+        }
+      });
+
+      // Save each to Firebase via API
+      const promises = targetProfileAndUpdated.map(async (p) => {
+        const res = await fetch("/api/firebase/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p),
+        });
+        return res;
+      });
+
+      await Promise.all(promises);
+
+      // Reload list and set current active profile
+      const res = await fetch("/api/firebase/list");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.profiles) {
+          setAllProfiles(data.profiles);
+          const activePub = data.profiles.find((p: any) => p.isPublished === true) || data.profiles.find((p: any) => p.businessName === profileName);
+          if (activePub) {
+            setProfile(activePub);
+          }
+        }
+      }
+
+      addToast("Berhasil Publikasi 🌐", `Profil "${profileName}" telah ditetapkan sebagai Halaman Utama Publik secara permanen!`, "success");
+    } catch (err: any) {
+      console.error(err);
+      addToast("Gagal Publikasi ⚠️", err.message || "Gagal menetapkan profil utama.", "error");
+    } finally {
+      setIsLoadingProfiles(false);
+    }
+  };
+
+  const handleSaveQuickEdit = async () => {
+    if (!editingProfile) return;
+    setIsLoadingProfiles(true);
+    try {
+      const res = await fetch("/api/firebase/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingProfile),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          addToast("Berubah & Tersimpan ✅", `Profil "${editingProfile.businessName}" berhasil disimpan secara permanen di database Firebase!`, "success");
+          setShowEditModal(false);
+          setEditingProfile(null);
+          await fetchAllProfiles();
+          
+          // Determine if we need to update active visible profile
+          const currentIsThisOne = profile.businessName === editingProfile.businessName || editingProfile.isPublished;
+          if (currentIsThisOne) {
+            setProfile(editingProfile);
+          }
+        } else {
+          throw new Error(data.message || "Gagal menyimpan.");
+        }
+      } else {
+        throw new Error("Gagal menyambungkan ke server.");
+      }
+    } catch (err: any) {
+      addToast("Gagal Menyimpan ⚠️", err.message || "Terjadi kendala saat menyimpan database.", "error");
+    } finally {
+      setIsLoadingProfiles(false);
     }
   };
 
@@ -144,6 +295,8 @@ export default function App() {
     };
     setProfile(newProfile);
     setActiveView('editor');
+    setHasUnsavedChanges(true);
+    setAllProfiles((prev) => [...prev, newProfile]);
     setDbSyncMessage({ type: 'success', text: "Berhasil membuat draft profil baru! Silakan edit lalu sinkronkan ke database." });
   };
 
@@ -187,7 +340,10 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         setDbSyncMessage({ type: 'success', text: data.message });
+        setHasUnsavedChanges(false);
+        addToast("Berhasil Sinkronisasi ⚡", `Data "${profile.businessName}" telah sukses diselaraskan secara permanen ke Firebase Firestore!`, "success");
         await checkDbStatus();
+        await fetchAllProfiles(); // Keep our profiles snapshot updated
       } else {
         throw new Error(data.message || "Gagal menyelaraskan.");
       }
@@ -196,6 +352,7 @@ export default function App() {
         type: 'error', 
         text: err.message || "Gagal menghubungi database cloud Firebase Firestore." 
       });
+      addToast("Sinkronisasi Gagal ❌", err.message || "Tidak dapat mengunggah rincian data ke Firebase.", "error");
     } finally {
       setDbSyncLoading(false);
     }
@@ -210,6 +367,11 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success && data.profile) {
         setProfile(data.profile);
+        setHasUnsavedChanges(false);
+        // Also ensure this loaded profile version replaces in memory snapshot
+        setAllProfiles((prev) =>
+          prev.map((p) => (p.businessName === data.profile.businessName ? data.profile : p))
+        );
         setDbSyncMessage({ 
           type: 'success', 
           text: `Berhasil mengambil & menerapkan profil "${profile.businessName}" langsung dari database Firebase Firestore!` 
@@ -229,9 +391,16 @@ export default function App() {
 
   // Switch presets
   const handleSelectPreset = (index: number) => {
-    setProfile(PRESET_BUSINESSES[index]);
+    const selected = PRESET_BUSINESSES[index];
+    setProfile(selected);
     setApiError(null);
     setDbSyncMessage(null);
+    setHasUnsavedChanges(false);
+    setAllProfiles((prev) => {
+      const exists = prev.some((p) => p.businessName === selected.businessName);
+      if (exists) return prev;
+      return [...prev, selected];
+    });
   };
 
   // Call server-side Gemini generation via our full-stack endpoint
@@ -280,10 +449,11 @@ export default function App() {
       const generatedProfile: Omit<BusinessProfile, 'theme'> = await response.json();
       
       // Update our react state with the returned JSON plus the selected client theme style
-      setProfile({
+      const newGenProfile = {
         ...generatedProfile,
         theme: params.theme as any,
-      });
+      } as BusinessProfile;
+      handleProfileChange(newGenProfile);
       
     } catch (err: any) {
       console.error(err);
@@ -321,7 +491,7 @@ export default function App() {
       if (!parsed.businessName || !parsed.slogan || !parsed.services || !parsed.contactInfo) {
         throw new Error("Struktur JSON tidak lengkap. Pastikan memiliki nama, slogan, layanan, dan kontak.");
       }
-      setProfile(parsed);
+      handleProfileChange(parsed);
       setShowImportModal(false);
       setImportJsonText("");
     } catch (err: any) {
@@ -332,6 +502,50 @@ export default function App() {
   // Trigger default print layout
   const handlePrintLayout = () => {
     window.print();
+  };
+
+  const renderToastContainer = () => {
+    return (
+      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-none select-none pr-safe">
+        <AnimatePresence>
+          {toasts.map((toast) => (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, y: -20, scale: 0.9, x: 20 }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.85, x: 30, transition: { duration: 0.15 } }}
+              className="pointer-events-auto w-full bg-white/95 backdrop-blur-md rounded-2xl border border-neutral-200/80 p-4 shadow-xl flex items-start gap-3.5 ring-1 ring-black/5"
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border shadow-3xs ${
+                toast.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-100/70' :
+                toast.type === 'error' ? 'bg-rose-50 text-rose-600 border-rose-100/70' :
+                'bg-blue-50 text-blue-600 border-blue-100/70'
+              }`}>
+                {toast.type === 'success' ? <Check className="w-4 h-4" /> :
+                 toast.type === 'error' ? <AlertCircle className="w-4 h-4" /> :
+                 <Info className="w-4 h-4" />}
+              </div>
+              
+              <div className="flex-1 space-y-0.5 min-w-0 pr-1 text-left">
+                <h4 className="text-xs font-black text-neutral-900 tracking-tight leading-none">
+                  {toast.title}
+                </h4>
+                <p className="text-[10px] text-neutral-500 font-bold leading-relaxed mt-1">
+                  {toast.message}
+                </p>
+              </div>
+
+              <button
+                onClick={() => removeToast(toast.id)}
+                className="text-neutral-400 hover:text-neutral-600 p-1 hover:bg-neutral-100 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    );
   };
 
   if (roleMode === 'public') {
@@ -580,6 +794,7 @@ export default function App() {
             </div>
           </div>
         )}
+        {renderToastContainer()}
       </div>
     );
   }
@@ -760,10 +975,21 @@ export default function App() {
                 }
               </p>
               
+              {/* Alert for unsaved local edits pointing to save button */}
+              {hasUnsavedChanges && (
+                <div className="mt-2.5 p-3 rounded-xl bg-amber-50 text-amber-900 border border-amber-205 flex items-start gap-2 text-[11px] leading-relaxed font-bold animate-fadeIn shadow-3xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-amber-950 uppercase block tracking-wider text-[10px] mb-0.5">⚠️ Perubahan Belum Disinkronkan</span>
+                    Ada perubahan data yang belum disimpan ke database Firebase Firestore. Klik tombol <span className="bg-indigo-100 text-indigo-950 px-1 py-0.2 rounded font-mono text-[10px]">Sinkronkan ke Firebase</span> di sebelah kanan Anda agar data terpublikasi secara permanen!
+                  </div>
+                </div>
+              )}
+
               {/* Display sync notifications */}
               {dbSyncMessage && (
                 <div className={`mt-2 p-2 px-3 rounded-lg text-[11px] leading-relaxed flex items-center gap-2 font-semibold animate-fadeIn ${
-                  dbSyncMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  dbSyncMessage.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-850 border border-rose-200'
                 }`}>
                   {dbSyncMessage.type === 'success' ? <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
                   <span>{dbSyncMessage.text}</span>
@@ -812,7 +1038,7 @@ export default function App() {
           <div className="sticky top-4">
             <ProfileForms 
               profile={profile}
-              onChange={setProfile}
+              onChange={handleProfileChange}
               onAiGenerate={handleAiGenerate}
               isAiGenerating={isAiGenerating}
               aiStatus={aiStatus}
@@ -1043,7 +1269,7 @@ export default function App() {
                         <th className="px-6 py-3.5">Kategori</th>
                         <th className="px-6 py-3.5">Tema Visual</th>
                         <th className="px-6 py-3.5">Detail Kontak</th>
-                        <th className="px-6 py-3.5 font-bold">Offerings</th>
+                        <th className="px-6 py-3.5">Status Tampilan</th>
                         <th className="px-6 py-3.5 text-right">Tindakan CRUD</th>
                       </tr>
                     </thead>
@@ -1088,7 +1314,7 @@ export default function App() {
                                       {p.businessName}
                                       {isCurrent && (
                                         <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                                          Sedang Diedit
+                                          Sedang Aktif
                                         </span>
                                       )}
                                     </span>
@@ -1119,11 +1345,22 @@ export default function App() {
                                 <div className="truncate max-w-xs italic text-[10px]">📍 {p.contactInfo.address}</div>
                               </td>
 
-                              {/* Offerings count */}
+                              {/* Status Tampilan Utama */}
                               <td className="px-6 py-4">
-                                <span className="font-semibold text-neutral-600 bg-blue-50 border border-blue-150 px-2 py-0.5 rounded-lg text-[10px]">
-                                  {p.services?.length || 0} Jasa / {p.products?.length || 0} Produk
-                                </span>
+                                {p.isPublished ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black border border-emerald-200/60 shadow-3xs">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    Utama (Aktif)
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleTogglePublish(p.businessName)}
+                                    className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-600 hover:text-indigo-750 border border-neutral-200 hover:border-indigo-200 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                    title="Tampilkan profil ini di halaman utama publik"
+                                  >
+                                    Jadikan Utama 🌐
+                                  </button>
+                                )}
                               </td>
 
                               {/* CRUD Action tools */}
@@ -1133,25 +1370,26 @@ export default function App() {
                                   <button
                                     onClick={() => {
                                       setProfile(p);
+                                      setHasUnsavedChanges(false);
                                       setDbSyncMessage({ type: 'success', text: `Profil "${p.businessName}" dimuat ke layar!` });
                                       setActiveView('editor');
                                     }}
                                     className="px-2.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 hover:text-neutral-900 text-neutral-700 font-bold rounded-xl transition-all text-[11px] cursor-pointer"
-                                    title="Buka & Tinjau di editor"
+                                    title="Buka & Tinjau di desainer / beralih ke editor"
                                   >
-                                    Tinjau
+                                    Desainer
                                   </button>
                                   
                                   {/* Edit Action */}
                                   <button
                                     onClick={() => {
-                                      setProfile(p);
-                                      setActiveView('editor');
+                                      setEditingProfile(p);
+                                      setShowEditModal(true);
                                     }}
-                                    className="px-2.5 py-1.5 bg-indigo-55 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-all text-[11px] cursor-pointer"
-                                    title="Edit data profil ini"
+                                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all text-[11px] cursor-pointer shadow-sm flex items-center gap-1"
+                                    title="Ubah info utama & simpan langsung"
                                   >
-                                    Sunting
+                                    Ubah / Edit ✏️
                                   </button>
     
                                   {/* Delete Action */}
@@ -1283,6 +1521,189 @@ export default function App() {
         </div>
       )}
 
+      {/* QUICK STATUS EDIT MODAL FOR SINGLE-PROFILE MANIPULATION */}
+      {showEditModal && editingProfile && (
+        <div className="fixed inset-0 z-55 bg-neutral-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-neutral-200 shadow-2xl overflow-hidden flex flex-col uppercase-none animate-scaleIn max-h-[90vh]">
+            <div className="bg-neutral-50 px-6 py-5 border-b border-neutral-200 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-150 flex items-center justify-center text-indigo-600 font-bold">
+                  ✏️
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-neutral-800 tracking-tight">
+                    Pengubah Cepat Data Profil
+                  </h3>
+                  <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
+                    Ubah & Simpan Permanen Langsung Ke Firebase
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingProfile(null);
+                }}
+                className="text-neutral-400 hover:text-neutral-700 font-bold text-lg p-1.5 hover:bg-neutral-100 rounded-lg transition-all"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-5 text-left flex-1 select-none">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Nama Usaha */}
+                <div className="md:col-span-2 space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Nama Usaha / Bisnis (ID di Firebase)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingProfile.businessName}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, businessName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 bg-neutral-50"
+                  />
+                  <p className="text-[9px] text-amber-600 font-semibold leading-relaxed">
+                    ⚠️ Catatan: Mengubah nama usaha akan menyalin profil ini ke ID dokumen baru di Firebase Firestore.
+                  </p>
+                </div>
+
+                {/* Slogan */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Slogan Bisnis
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.slogan || ""}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, slogan: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 text-neutral-800"
+                  />
+                </div>
+
+                {/* Kategori */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Kategori Industri / Bisnis
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.category || ""}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, category: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 text-neutral-800"
+                  />
+                </div>
+
+                {/* Tema Visual */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Tema Gaya Tampilan
+                  </label>
+                  <select
+                    value={editingProfile.theme}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, theme: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold bg-white focus:outline-none focus:border-indigo-600 text-neutral-800"
+                  >
+                    <option value="minimalist">Minimalist (Modern & Teduh)</option>
+                    <option value="nature">Nature (Asri Hijau)</option>
+                    <option value="luxury">Luxury (Mewah Temaram)</option>
+                    <option value="vibrant">Vibrant (Aktif Dinamis)</option>
+                    <option value="corporate">Corporate (Profesional Biru)</option>
+                  </select>
+                </div>
+
+                {/* Kontak HP/WA */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Nomor Telepon / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.contactInfo?.phone || ""}
+                    onChange={(e) => setEditingProfile({ 
+                      ...editingProfile, 
+                      contactInfo: { ...editingProfile.contactInfo, phone: e.target.value } 
+                    })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 text-neutral-800"
+                  />
+                </div>
+
+                {/* Deskripsi Singkat (About Us) */}
+                <div className="md:col-span-2 space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Tentang Kami / Penjelasan Singkat
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editingProfile.aboutUs || ""}
+                    onChange={(e) => setEditingProfile({ ...editingProfile, aboutUs: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 text-neutral-800 leading-relaxed"
+                  />
+                </div>
+
+                {/* Alamat Fisik */}
+                <div className="md:col-span-2 space-y-1">
+                  <label className="block text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider">
+                    Alamat Fisik / Lokasi
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editingProfile.contactInfo?.address || ""}
+                    onChange={(e) => setEditingProfile({ 
+                      ...editingProfile, 
+                      contactInfo: { ...editingProfile.contactInfo, address: e.target.value } 
+                    })}
+                    className="w-full px-3.5 py-2.5 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-600 text-neutral-800 leading-relaxed"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between text-xs font-bold text-indigo-900 mt-2">
+                <span className="flex items-center gap-1.5 text-[11px] leading-snug">
+                  🛠️ Ingin memodifikasi Layanan, Produk, FAQ, atau Tim secara mendalam?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfile(editingProfile);
+                    setHasUnsavedChanges(true);
+                    setShowEditModal(false);
+                    setEditingProfile(null);
+                    setActiveView('editor');
+                  }}
+                  className="px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 text-[10px] font-extrabold rounded-xl shrink-0 transition-all cursor-pointer shadow-3xs"
+                >
+                  Buka Desainer Lengkap
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-neutral-50 px-6 py-4 border-t border-neutral-200 flex justify-end gap-2.5 shrink-0">
+              <button 
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingProfile(null);
+                }}
+                className="px-4 py-2.5 hover:bg-neutral-100 rounded-xl border border-neutral-200 text-neutral-600 font-extrabold text-xs transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button 
+                type="button"
+                onClick={handleSaveQuickEdit}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-50 cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-emerald-100" />
+                Simpan & Terapkan Secara Permanen ⚡
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renderToastContainer()}
     </div>
   );
 }

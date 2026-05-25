@@ -74,6 +74,7 @@ export interface BusinessProfile {
   operatingHours: OperatingHour[];
   reports?: OwnerReport[];
   profileImageUrl?: string;
+  isPublished?: boolean;
 }
 
 export interface ThemeColors {
