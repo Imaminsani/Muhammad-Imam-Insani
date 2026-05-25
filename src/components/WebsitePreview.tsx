@@ -67,19 +67,6 @@ export default function WebsitePreview({ profile, viewportWidth, isPreviewOnly =
   return (
     <div className={`transition-all duration-300 bg-white overflow-hidden mx-auto h-[780px] flex flex-col ${getViewportClass()}`}>
       
-      {/* Browser chrome header (only if desktop display) */}
-      <div className="bg-neutral-100 px-4 py-2 flex items-center gap-2 border-b border-neutral-200 select-none text-[10px] text-neutral-400 shrink-0">
-        <div className="flex gap-1.5 mr-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
-          <span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
-        </div>
-        <div className="bg-white rounded px-2 py-0.5 text-center flex-1 max-w-[400px] border border-neutral-200 truncate flex items-center justify-center gap-1">
-          <span className="text-emerald-500 font-bold select-none text-[8px]">🔒</span>
-          https://{businessName.toLowerCase().replace(/[^a-z0-9]/g, "")}.id
-        </div>
-      </div>
-
       {/* Website Body Canvas */}
       <div className={`flex-1 overflow-y-auto scroll-smooth ${palette.bgLight} ${palette.fontSans} text-neutral-800 text-sm`}>
         

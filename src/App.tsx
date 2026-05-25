@@ -27,8 +27,18 @@ export default function App() {
   const [importJsonText, setImportJsonText] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
 
-  // Admin CRUD View States
-  const [activeView, setActiveView] = useState<'editor' | 'admin'>('editor');
+  // High-level role view: 'public' (Visitor website) vs 'admin' (Owner dashboard panel)
+  const [roleMode, setRoleMode] = useState<'public' | 'admin'>('public');
+
+  // Secure Owner authentication states
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Admin CRUD View States (inside the Owner dashboard portal)
+  const [activeView, setActiveView] = useState<'editor' | 'admin'>('admin');
   const [allProfiles, setAllProfiles] = useState<BusinessProfile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [adminMessage, setAdminMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -53,10 +63,29 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (activeView === 'admin') {
+    if (roleMode === 'admin') {
       fetchAllProfiles();
     }
-  }, [activeView]);
+  }, [roleMode, activeView]);
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    
+    const user = loginUsername.trim().toLowerCase();
+    const pass = loginPassword.trim();
+
+    if (user === "wismabidara" && pass === "Hasdudi19") {
+      setIsAuthenticated(true);
+      setShowLoginModal(false);
+      setRoleMode('admin');
+      setActiveView('admin');
+      setLoginUsername("");
+      setLoginPassword("");
+    } else {
+      setLoginError("ID atau Password salah! Silakan coba lagi dengan ID 'wismabidara' & Password 'Hasdudi19'.");
+    }
+  };
 
   const handleDeleteProfile = async (name: string) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus profil "${name}" secara permanen dari database & fallback lokal?`)) {
@@ -305,6 +334,257 @@ export default function App() {
     window.print();
   };
 
+  if (roleMode === 'public') {
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col antialiased text-neutral-800">
+        {/* Dynamic Print Header (Invisible on Web, visible on paper print) */}
+        <div className="hidden print:block p-8 bg-white text-black">
+          <h1 className="text-3xl font-extrabold">{profile.businessName}</h1>
+          <p className="text-lg text-neutral-600 font-serif italic mb-6">{profile.slogan}</p>
+          <h2 className="text-xl font-bold border-b pb-1 mt-6 mb-3">Tentang Usaha Kami</h2>
+          <p className="text-sm leading-relaxed mb-6 whitespace-pre-wrap">{profile.story}</p>
+          <h2 className="text-xl font-bold border-b pb-1 mt-6 mb-3">Layanan & Jasa Utama</h2>
+          <div className="space-y-4">
+            {profile.services.map((srv, i) => (
+              <div key={i} className="border-l-4 border-slate-700 pl-4 py-1">
+                <h3 className="font-extrabold text-sm">{srv.title} — {srv.price}</h3>
+                <p className="text-xs text-neutral-600 mt-0.5">{srv.description}</p>
+              </div>
+            ))}
+          </div>
+          <h2 className="text-xl font-bold border-b pb-1 mt-8 mb-3">Hubungi Kontak</h2>
+          <p className="text-sm">Alamat: {profile.contactInfo.address}</p>
+          <p className="text-sm">WhatsApp: {profile.contactInfo.phone}</p>
+          <p className="text-sm">Email: {profile.contactInfo.email}</p>
+        </div>
+
+        {/* Immersive Public Mode Floating Header with admin portals access */}
+        <div className="bg-neutral-900 border-b border-neutral-800 text-white px-6 py-3 shrink-0 print:hidden shadow-md">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <Compass className="w-4 h-4 text-white animate-spin-slow" />
+              </div>
+              <div className="text-center sm:text-left">
+                <div className="flex items-center gap-2 justify-center sm:justify-start">
+                  <span className="text-[10px] font-black bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30 uppercase tracking-widest leading-none">
+                    Tampilan Publik Umum
+                  </span>
+                  <span className="text-[11px] text-neutral-400 font-mono hidden md:inline">
+                    https://{profile.businessName.toLowerCase().replace(/[^a-z0-9]/g, "")}.id
+                  </span>
+                </div>
+                <p className="text-[10px] sm:text-[11px] text-neutral-400 mt-0.5">
+                  Ini adalah laman resmi <span className="text-white font-extrabold">{profile.businessName}</span> yang diakses langsung oleh khalayak umum.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Devices viewport responsive shortcuts */}
+              <div className="flex items-center bg-neutral-800 p-0.5 rounded-lg border border-neutral-700">
+                <button
+                  onClick={() => setViewport('desktop')}
+                  className={`p-1.5 rounded transition-all ${viewport === 'desktop' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-neutral-350'}`}
+                  title="Tampilan Dekstop"
+                >
+                  <Laptop className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewport('tablet')}
+                  className={`p-1.5 rounded transition-all ${viewport === 'tablet' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-neutral-350'}`}
+                  title="Tampilan Tablet"
+                >
+                  <Tablet className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewport('mobile')}
+                  className={`p-1.5 rounded transition-all ${viewport === 'mobile' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-neutral-350'}`}
+                  title="Tampilan Seluler"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setIsFullscreen(true)}
+                className="px-3 py-1.5 hover:bg-neutral-800 text-neutral-300 hover:text-white rounded-lg transition-all flex items-center gap-1 text-[11px] font-bold"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Layar Penuh
+              </button>
+
+              <button
+                onClick={() => {
+                  if (isAuthenticated) {
+                    setRoleMode('admin');
+                    setActiveView('admin');
+                  } else {
+                    setShowLoginModal(true);
+                  }
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-550 hover:to-indigo-600 text-white font-black rounded-xl text-xs transition-all flex items-center gap-2 shadow-md shadow-indigo-950/20 cursor-pointer border border-indigo-500/10"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                🔑 Masuk Portal Pemilik Kos
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Visual Board Viewport */}
+        <div className="flex-1 p-3 sm:p-6 lg:p-8 flex items-center justify-center bg-slate-50 overflow-y-auto">
+          <div className="w-full h-full max-w-7xl flex flex-col justify-center">
+            <WebsitePreview 
+              profile={profile}
+              viewportWidth={viewport}
+            />
+          </div>
+        </div>
+
+        {/* Immersive compact bottom info block */}
+        <div className="bg-white border-t border-neutral-200/60 p-3.5 text-center text-[11px] text-neutral-400 font-bold shrink-0">
+          🏡 {profile.businessName} &copy; {new Date().getFullYear()} Hak Cipta Dilindungi. Hubungi Kontrakan / Kost di {profile.contactInfo.phone}.
+        </div>
+
+        {/* Floating Action Button (FAB) for direct admin portal login */}
+        <div className="fixed bottom-6 right-6 z-40 print:hidden select-none">
+          <button
+            onClick={() => {
+              if (isAuthenticated) {
+                setRoleMode('admin');
+                setActiveView('admin');
+              } else {
+                setShowLoginModal(true);
+              }
+            }}
+            className="flex items-center gap-2 px-5 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer border border-indigo-500/30 animate-pulse group"
+            title="Masuk Ke Portal Admin & Kelola Unit"
+          >
+            <Shield className="w-5 h-5 text-yellow-300 animate-spin-slow group-hover:rotate-12 transition-transform" />
+            <span className="text-xs sm:text-xs tracking-wider uppercase">Tombol Masuk Admin 🔑</span>
+          </button>
+        </div>
+
+        {/* Fullscreen Modal Support */}
+        {isFullscreen && (
+          <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-md flex flex-col justify-center animate-fadeIn p-4 sm:p-8">
+            <div className="max-w-6xl w-full mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden h-[90vh] flex flex-col relative">
+              <div className="bg-neutral-50 px-6 py-4 flex items-center justify-between border-b border-neutral-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-bold text-xs uppercase tracking-wider text-neutral-500">
+                    Pratinjau Layar Penuh: {profile.businessName}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setIsFullscreen(false)}
+                  className="px-4 py-1.5 bg-neutral-900 hover:bg-neutral-950 text-white font-bold text-xs rounded-lg transition-all"
+                >
+                  Keluar Layar Penuh
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <WebsitePreview 
+                  profile={profile}
+                  viewportWidth="desktop"
+                  isPreviewOnly={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Beautiful Secure Login Modal */}
+        {showLoginModal && (
+          <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-white border border-neutral-200 rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl relative animate-scaleIn flex flex-col gap-6">
+              <div className="text-center space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto shadow-2xs">
+                  <Shield className="w-5 h-5 animate-pulse" />
+                </div>
+                <h3 className="text-lg font-black text-neutral-900 tracking-tight">Login Portal Pemilik Kos</h3>
+                <p className="text-xs text-neutral-400 font-semibold max-w-xs mx-auto">
+                  Silakan masukkan akses pengenal ID Anda untuk mengelola unit, laporan sewa, dan informasi kost.
+                </p>
+              </div>
+
+              {loginError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-805 text-xs font-bold flex items-start gap-2 leading-relaxed">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-neutral-500 mb-1.5 uppercase tracking-wider">
+                    ID Pengguna / Username
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={loginUsername}
+                    onChange={(e) => {
+                      setLoginUsername(e.target.value);
+                      if (loginError) setLoginError("");
+                    }}
+                    placeholder="Contoh: admin"
+                    className="w-full px-3.5 py-2.5 bg-neutral-55 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:bg-white focus:border-indigo-650 transition-all text-neutral-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-extrabold text-neutral-500 mb-1.5 uppercase tracking-wider">
+                    Kata Sandi / Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={loginPassword}
+                    onChange={(e) => {
+                      setLoginPassword(e.target.value);
+                      if (loginError) setLoginError("");
+                    }}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 bg-neutral-55 border border-neutral-200 rounded-xl text-xs font-bold focus:outline-none focus:bg-white focus:border-indigo-650 transition-all text-neutral-800"
+                  />
+                </div>
+
+                <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-150/70 text-[11px] text-amber-900 font-bold leading-relaxed flex items-start gap-1.5 shadow-3xs">
+                  💡 <span className="block shrink-0 mt-0.5">Note:</span> 
+                  <span>Gunakan ID <code className="bg-amber-100/85 text-amber-950 px-1 py-0.2 rounded font-black font-mono">wismabidara</code> dan Password <code className="bg-amber-100/85 text-amber-950 px-1 py-0.2 rounded font-black font-mono">Hasdudi19</code> untuk masuk.</span>
+                </div>
+
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLoginModal(false);
+                      setLoginUsername("");
+                      setLoginPassword("");
+                      setLoginError("");
+                    }}
+                    className="flex-1 py-2.5 px-4 bg-neutral-100 hover:bg-neutral-150 text-neutral-700 font-extrabold rounded-xl text-xs transition-all text-center cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 px-4 bg-indigo-650 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    Masuk Portal
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Admin View Rendering Mode (strictly for Cosan Owners)
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col antialiased text-neutral-800">
       
@@ -312,10 +592,8 @@ export default function App() {
       <div className="hidden print:block p-8 bg-white text-black">
         <h1 className="text-3xl font-extrabold">{profile.businessName}</h1>
         <p className="text-lg text-neutral-600 font-serif italic mb-6">{profile.slogan}</p>
-        
         <h2 className="text-xl font-bold border-b pb-1 mt-6 mb-3">Tentang Usaha Kami</h2>
         <p className="text-sm leading-relaxed mb-6 whitespace-pre-wrap">{profile.story}</p>
-
         <h2 className="text-xl font-bold border-b pb-1 mt-6 mb-3">Layanan & Jasa Utama</h2>
         <div className="space-y-4">
           {profile.services.map((srv, i) => (
@@ -325,49 +603,76 @@ export default function App() {
             </div>
           ))}
         </div>
-
         <h2 className="text-xl font-bold border-b pb-1 mt-8 mb-3">Hubungi Kontak</h2>
         <p className="text-sm">Alamat: {profile.contactInfo.address}</p>
         <p className="text-sm">WhatsApp: {profile.contactInfo.phone}</p>
         <p className="text-sm">Email: {profile.contactInfo.email}</p>
       </div>
 
-      {/* Primary Dashboard Navbar */}
+      {/* Primary Owner Secure Dashboard Navbar */}
       <header className="bg-white border-b border-neutral-200 px-6 py-4 flex flex-col lg:flex-row items-center justify-between gap-4 shrink-0 print:hidden shadow-xs">
         <div className="flex items-center gap-3 w-full lg:w-auto">
-          <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-100 shrink-0">
-            <Server className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-indigo-650 text-white flex items-center justify-center shadow-md shadow-indigo-100 shrink-0">
+            <Shield className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-neutral-900 leading-none">
-              Portal Admin & Profil Wisma Bidara
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-neutral-900 text-white uppercase tracking-wider">
+                Platform Pemilik Kos
+              </span>
+              <span className="text-neutral-300 font-semibold text-xs">|</span>
+              <span className="text-[10px] text-indigo-750 font-black tracking-tight flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Firestore Connected
+              </span>
+            </div>
+            <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-neutral-900 leading-none mt-1">
+              Portal Admin & Manajemen Wisma Bidara
             </h1>
-            <p className="text-[11px] text-neutral-450 font-semibold mt-1">
-              Sistem manajemen informasi digital & integrasi database Firebase Firestore terpadu
-            </p>
           </div>
         </div>
 
-        {/* View Switching Tab Area */}
+        {/* View Switching Tab Area within Owner space */}
         <div className="flex items-center justify-center gap-1 bg-neutral-105 p-1 rounded-xl border border-neutral-200 w-full md:w-auto shrink-0 shadow-3xs">
           <button
-            onClick={() => setActiveView('editor')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${activeView === 'editor' ? 'bg-amber-600 text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/50'}`}
+            onClick={() => setActiveView('admin')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${activeView === 'admin' ? 'bg-neutral-950 text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/50'}`}
           >
-            <Laptop className="w-3.5 h-3.5" />
-            Studio Penyunting Profil
+            <Layers className="w-3.5 h-3.5" />
+            1. Katalog Database Kost ({allProfiles.length})
           </button>
           <button
-            onClick={() => setActiveView('admin')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${activeView === 'admin' ? 'bg-neutral-800 text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/50'}`}
+            onClick={() => setActiveView('editor')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${activeView === 'editor' ? 'bg-indigo-650 text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-200/50'}`}
           >
-            <Server className="w-3.5 h-3.5" />
-            Halaman Admin CRUD
+            <Edit className="w-3.5 h-3.5" />
+            2. Formulir Desainer Isian
           </button>
         </div>
 
         {/* Action button groupings */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setRoleMode('public')}
+            className="px-3.5 py-2 hover:bg-neutral-50 bg-white rounded-lg text-xs font-bold text-neutral-700 border border-neutral-200 transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Tinjau tampilan publik secara langsung"
+          >
+            <Eye className="w-3.5 h-3.5 text-neutral-500" />
+            Pratinjau Publik
+          </button>
+
+          <button
+            onClick={() => {
+              setIsAuthenticated(false);
+              setRoleMode('public');
+            }}
+            className="px-3.5 py-2 hover:bg-red-700 bg-red-650 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shadow-red-100"
+            title="Keluar secara aman dan kunci kembali Portal Pengurus"
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            Keluar & Kunci Portal
+          </button>
+
           <button 
             onClick={() => setShowImportModal(true)}
             className="px-3.5 py-2 hover:bg-neutral-100 rounded-lg text-xs font-semibold text-neutral-600 transition-all flex items-center gap-1.5 border border-neutral-200"
@@ -388,25 +693,25 @@ export default function App() {
 
           <button 
             onClick={handlePrintLayout}
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 rounded-lg text-xs font-bold text-white transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-100"
-            title="Cetak pamflet / kertas hvs profil usaha"
+            className="px-3.5 py-2 bg-neutral-900 hover:bg-black rounded-lg text-xs font-bold text-white transition-all flex items-center gap-1.5 shadow-sm"
+            title="Cetak leaflet rincian kos"
           >
-            <Printer className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5 text-neutral-300" />
             Cetak Profil
           </button>
         </div>
       </header>
 
-      {/* Structured Info Bar */}
+      {/* Structured Info Bar for Owner */}
       <div className="bg-amber-50/50 px-6 py-2.5 border-b border-amber-100/70 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shrink-0 print:hidden">
         <div className="flex items-center gap-2">
-          <span className="font-extrabold text-amber-800 uppercase tracking-wider text-[10px] bg-amber-100/80 px-2 py-0.5 rounded">Fokus Manajemen:</span>
-          <span className="text-neutral-700 font-extrabold">🏡 Wisma Bidara (Kost Eksklusif & Unit Kontrakan Jakarta)</span>
+          <span className="font-extrabold text-amber-800 uppercase tracking-wider text-[10px] bg-amber-100/80 px-2 py-0.5 rounded">Fokus Manajemen Aktif:</span>
+          <span className="text-neutral-700 font-extrabold">🏡 {profile.businessName} (Kategori: {profile.category})</span>
         </div>
 
         <div className="text-neutral-500 text-[11px] font-medium italic flex items-center gap-1">
           <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-          Edit kolom apa pun pada panel formulir kiri untuk memperbarui halaman pratinjau publik di sebelah kanan!
+          Edit rincian data unit kamar, laporan bulanan, orari pada Formulir Desainer Isian lalu unggah ke Firestore!
         </div>
       </div>
 
